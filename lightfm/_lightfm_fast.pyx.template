@@ -267,21 +267,24 @@ cdef inline flt sigmoid(flt v) nogil:
     return 1.0 / (1.0 + exp(-v))
 
 
-cdef inline int in_positives(int item_id, int user_id, CSRMatrix interactions) nogil:
+cdef inline flt in_positives(int item_id, int user_id, CSRMatrix interactions) nogil:
 
-    cdef int i, start_idx, stop_idx
+    cdef int i, start_idx, stop_idx, data_idx
+    cdef int *col_ptr
 
     start_idx = interactions.get_row_start(user_id)
     stop_idx = interactions.get_row_end(user_id)
 
-    if bsearch(&item_id,
-               &interactions.indices[start_idx],
-               stop_idx - start_idx,
-               sizeof(int),
-               int_compare) == NULL:
+    col_ptr = <int *> bsearch(&item_id,
+                              &interactions.indices[start_idx],
+                              stop_idx - start_idx,
+                              sizeof(int),
+                              int_compare)
+    if col_ptr == NULL:
         return 0
     else:
-        return 1
+        data_idx = col_ptr - &interactions.indices[0]
+        return interactions.data[data_idx]
 
 
 cdef inline void compute_representation(CSRMatrix features,
@@ -875,7 +878,7 @@ def fit_warp(CSRMatrix item_features,
                 if negative_prediction > positive_prediction - 1:
 
                     # Sample again if the sample negative is actually a positive
-                    if in_positives(negative_item_id, user_id, interactions):
+                    if Y[row] <= in_positives(negative_item_id, user_id, interactions):
                         continue
 
                     loss = weight * log(floor((item_features.rows - 1) / sampled))
@@ -1378,8 +1381,4 @@ def calculate_auc_from_rank(CSRMatrix ranks,
 
 # Expose test functions
 def __test_in_positives(int row, int col, CSRMatrix mat):
-
-    if in_positives(col, row, mat):
-        return True
-    else:
-        return False
+    return in_positives(col, row, mat)

@@ -786,6 +786,7 @@ def fit_logistic(CSRMatrix item_features,
 
 def fit_warp(CSRMatrix item_features,
              CSRMatrix user_features,
+             int is_explicit,
              CSRMatrix interactions,
              int[::1] user_ids,
              int[::1] item_ids,
@@ -862,9 +863,13 @@ def fit_warp(CSRMatrix item_features,
                 sampled = sampled + 1
                 negative_item_id = (rand_r(&random_states[{thread_num}])
                                     % item_features.rows)
-                # Sample again if the sample negative is actually a positive
-                if in_positives(negative_item_id, user_id, interactions):
-                    continue
+                if is_explicit:
+                    if Y[row] <= in_positives(negative_item_id, user_id, interactions):
+                        continue
+                else:
+                    # Sample again if the sample negative is actually a positive
+                    if in_positives(negative_item_id, user_id, interactions):
+                        continue
 
                 compute_representation(item_features,
                                        lightfm.item_features,
@@ -915,6 +920,7 @@ def fit_warp(CSRMatrix item_features,
 
 def fit_warp_kos(CSRMatrix item_features,
                  CSRMatrix user_features,
+                 int is_explicit,
                  CSRMatrix data,
                  int[::1] user_ids,
                  int[::1] shuffle_indices,
@@ -1072,6 +1078,7 @@ def fit_warp_kos(CSRMatrix item_features,
 
 def fit_bpr(CSRMatrix item_features,
             CSRMatrix user_features,
+            int is_explicit,
             CSRMatrix interactions,
             int[::1] user_ids,
             int[::1] item_ids,
@@ -1122,8 +1129,12 @@ def fit_bpr(CSRMatrix item_features,
             for j in range(no_examples):
                 negative_item_id = item_ids[(rand_r(&random_states[{thread_num}])
                                              % no_examples)]
-                if not in_positives(negative_item_id, user_id, interactions):
-                    break
+                if is_explicit:
+                    if Y[row] > in_positives(negative_item_id, user_id, interactions):
+                        break
+                else:
+                    if not in_positives(negative_item_id, user_id, interactions):
+                        break
 
             compute_representation(user_features,
                                    lightfm.user_features,

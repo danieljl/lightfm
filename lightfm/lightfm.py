@@ -160,6 +160,7 @@ class LightFM(object):
     """
 
     def __init__(self, no_components=10, k=5, n=10,
+                 is_explicit=False,
                  learning_schedule='adagrad',
                  loss='logistic',
                  learning_rate=0.05, rho=0.95, epsilon=1e-6,
@@ -187,6 +188,8 @@ class LightFM(object):
 
         self.k = int(k)
         self.n = int(n)
+
+        self.is_explicit = is_explicit
 
         self.rho = rho
         self.epsilon = epsilon
@@ -603,6 +606,7 @@ class LightFM(object):
         if loss == 'warp':
             fit_warp(CSRMatrix(item_features),
                      CSRMatrix(user_features),
+                     self.is_explicit,
                      positives_lookup,
                      interactions.row,
                      interactions.col,
@@ -618,6 +622,7 @@ class LightFM(object):
         elif loss == 'bpr':
             fit_bpr(CSRMatrix(item_features),
                     CSRMatrix(user_features),
+                    self.is_explicit,
                     positives_lookup,
                     interactions.row,
                     interactions.col,
@@ -633,6 +638,7 @@ class LightFM(object):
         elif loss == 'warp-kos':
             fit_warp_kos(CSRMatrix(item_features),
                          CSRMatrix(user_features),
+                         self.is_explicit,
                          positives_lookup,
                          interactions.row,
                          shuffle_indices,

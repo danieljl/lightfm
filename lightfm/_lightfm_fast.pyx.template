@@ -802,9 +802,11 @@ def fit_warp(CSRMatrix item_features,
     Fit the model using the WARP loss.
     """
 
-    cdef int i, no_examples, user_id, positive_item_id, gamma
+    cdef int i, j, no_examples, user_id, positive_item_id, gamma
     cdef int negative_item_id, sampled, row
+    cdef int user_pids_start, user_pids_stop
     cdef int no_all_positives, no_all_negatives
+    cdef int is_sampling_positive, no_sampling_positive, no_all_negative_positives
     cdef double positive_prediction, negative_prediction
     cdef double loss, MAX_LOSS
     cdef flt weight
@@ -832,8 +834,9 @@ def fit_warp(CSRMatrix item_features,
             user_id = user_ids[row]
             positive_item_id = item_ids[row]
 
-            no_all_positives = (interactions.get_row_end(user_id) -
-                                interactions.get_row_start(user_id))
+            user_pids_start = interactions.get_row_start(user_id)
+            user_pids_stop = interactions.get_row_end(user_id)
+            no_all_positives = user_pids_stop - user_pids_start
             no_all_negatives = item_features.rows - no_all_positives
 
             if not Y[row] > 0 or no_all_negatives == 0:
@@ -861,14 +864,36 @@ def fit_warp(CSRMatrix item_features,
                                                                lightfm.no_components)
 
             sampled = 0
+            is_sampling_positive = rand_r(&random_states[{thread_num}]) % 2
+            no_sampling_positive = 0
+
+            no_all_negative_positives = 0
+            for j in range(user_pids_start, user_pids_stop):
+                if interactions.data[j] < Y[row]:
+                    no_all_negative_positives = no_all_negative_positives + 1
+
+            if no_all_negative_positives == 0:
+                is_sampling_positive = 0
 
             while sampled < lightfm.max_sampled:
+                if is_sampling_positive:
+                    no_sampling_positive = no_sampling_positive + 1
+                    # if no_sampling_positive > 100:  # TODO Remove this
+                    #     break
 
-                negative_item_id = (rand_r(&random_states[{thread_num}])
-                                    % item_features.rows)
-                # Sample again if the sample negative is actually a positive
-                if in_positives(negative_item_id, user_id, interactions):
-                    continue
+                    negative_item_id = interactions.indices[
+                            sample_range(user_pids_start, user_pids_stop,
+                                         &random_states[{thread_num}])]
+                    if Y[row] <= in_positives(negative_item_id,
+                                              user_id, interactions):
+                        continue
+                else:
+                    negative_item_id = (rand_r(&random_states[{thread_num}])
+                                        % item_features.rows)
+                    # Sample again if the sample negative is actually a positive
+                    if in_positives(negative_item_id, user_id, interactions):
+                        continue
+
                 sampled = sampled + 1
 
                 compute_representation(item_features,
@@ -884,7 +909,12 @@ def fit_warp(CSRMatrix item_features,
                                                                    lightfm.no_components)
 
                 if negative_prediction > positive_prediction - 1:
-                    loss = weight * log(max(1.0, floor(no_all_negatives / sampled)))
+                    if is_sampling_positive:
+                        loss = weight * log(max(1.0, floor(no_all_negative_positives /
+                                                           sampled)))
+                    else:
+                        loss = weight * log(max(1.0, floor(no_all_negatives /
+                                                           sampled)))
 
                     # Clip gradients for numerical stability.
                     if loss > MAX_LOSS:
